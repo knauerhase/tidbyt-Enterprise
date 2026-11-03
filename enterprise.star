@@ -28,6 +28,7 @@ COLORS = {
     "n": "#a0a5af",  # nacelle
     "N": "#6e7380",  # nacelle shadow
     "p": "#6e737d",  # pylon
+    "F": "#555a66",  # far nacelle (behind the near one)
 }
 
 def build_side():
@@ -40,13 +41,14 @@ def build_side():
         for i in range(len(text)):
             g[row][col + i] = text[i]
 
-    # nacelle (bussard 'b' at the front, pulsed per frame)
-    put(0, 2, "nnnnnnnnnnnnnn")
-    put(0, 16, "b")
-    put(1, 2, "NNNNNNNNNNNNNN")
+    # far nacelle peeks out above the near one
+    put(0, 4, "FFFFFFFFFFFF")
+    # near nacelle (bussard 'b' at the front, pulsed per frame)
+    put(1, 2, "nnnnnnnnnnnnnn")
     put(1, 16, "b")
+    put(2, 2, "NNNNNNNNNNNNNN")
+    put(2, 16, "b")
     # pylon, slanting down toward the hull
-    put(2, 7, "pp")
     put(3, 8, "pp")
     put(4, 9, "pp")
     put(5, 10, "pp")
@@ -117,7 +119,7 @@ def make_view(rows, streaks):
 
 # streaks: (row inside the sprite, distance of the tail from the sprite's rear edge)
 VIEWS = {
-    "side": make_view(build_side(), [(0, 2), (1, 2), (8, 9)]),
+    "side": make_view(build_side(), [(0, 4), (1, 2), (2, 2), (8, 9)]),
     "top": make_view(build_plan(False), [(1, 3), (2, 3), (16, 3), (17, 3), (9, 9)]),
     "bottom": make_view(build_plan(True), [(1, 3), (2, 3), (16, 3), (17, 3), (9, 9)]),
 }
@@ -210,6 +212,19 @@ def streak_widgets(x_tail, y, length, right):
             out.append(box(lo, y, hi - lo, 1, shades[i]))
     return out
 
+PLANET = [("#4a86d4", 2), ("#4a86d4", 4), ("#3b70be", 4), ("#2b5aa8", 5), ("#2b5aa8", 5), ("#1f4585", 4), ("#1a3870", 4), ("#142b58", 2)]
+
+def planet_boxes(cx, cy):
+    """A small blue planet, drawn as rows of a disc (half-width in the tuple)."""
+    out = []
+    for i in range(len(PLANET)):
+        color, hw = PLANET[i]
+        lo = max(cx - hw, 0)
+        hi = min(cx + hw, W)
+        if hi > lo:
+            out.append(box(lo, cy + i, hi - lo, 1, color))
+    return out
+
 def build_frame(view, f, right):
     sw = view["w"]
     y0 = (H - view["h"]) // 2
@@ -229,6 +244,9 @@ def build_frame(view, f, right):
     for st in STARS:
         sx = (st[0] - drift) % W
         kids.append(box(sx, st[1], 1, 1, gray(st[2])))
+
+    # a planet drifting slowly past, behind the ship
+    kids.extend(planet_boxes(50 - int((1 if right else -1) * f * 0.2), 3))
 
     # warp streaks behind the nacelles and hull once it gets going
     if speed > 1.0:
@@ -273,10 +291,10 @@ def model_top():
     for sd in (-1, 1):
         out.append(cap(-6.2, -1.6, sd * 2.6, 0.55, GR))
     for sd in (-1, 1):
-        out.append(disc(-1.6, sd * 2.6, 0.6, "b"))
+        out.append(disc(-1.6, sd * 2.6, 0.5, "b"))
     for sd in (-1, 1):
         out.append(seg(-3.2, sd * 0.4, -4.4, sd * 2.5, 0.3, DK))
-    out.append(cap(-4.8, 0.5, 0, 0.75, DK))
+    out.append(cap(-4.8, 0.5, 0, 0.85, DK))
     out.append(disc(2.6, 0, 3.0, SA))
     out.append(disc(2.6, 0, 0.5, WH))
     return out
@@ -410,7 +428,7 @@ def build_diag_frame(f, ang, ss):
     a = ang * math.pi / 180.0
     fx = math.cos(a)
     fy = math.sin(a)
-    sc = 2.5
+    sc = 2.7
     total = 2 * (abs(fx) * 32 + abs(fy) * 16 + sc * 7.2)
     d = total * prog
     cx = 32 - fx * total / 2 + fx * d - fy * 2
@@ -476,6 +494,12 @@ def approach_frames(ss):
         sc = 0.12 * math.pow(58.0, s)
         kids = [render.Box(width = W, height = H, color = BG)]
         kids.extend(star_boxes(stars[f]))
+        if f < 38:  # registry fades in and out while the ship is still small
+            k = min(1.0, f / 8.0) * (1.0 - max(0.0, (f - 28) / 10.0))
+            kids.append(render.Padding(
+                pad = (16, 25, 0, 0),
+                child = render.Text(content = "NCC-1701", font = "tom-thumb", color = "#" + hex2(int(122 * k)) + hex2(int(143 * k)) + hex2(int(184 * k))),
+            ))
         kids.extend(draw_model(MODEL_FACE, 32, 17, 0, sc, f, True, ss))
         frames.append(render.Stack(children = kids))
     for i in range(6):  # it whooshes past: white-out that fades
@@ -493,18 +517,9 @@ def recede_frames(ss):
         kids.extend(star_boxes(STARS))
         kids.extend(draw_model(MODEL_REAR, 32, 17 - 4 * s, 0, sc, f, True, ss))
         frames.append(render.Stack(children = kids))
-    # warp flash where it disappears
-    for i in range(8):
-        k = 1.0 - i / 8.0
+    for _ in range(6):  # it's gone: just the stars
         kids = [render.Box(width = W, height = H, color = BG)]
         kids.extend(star_boxes(STARS))
-        hw = int(2 + 12 * k)
-        hh = int(1 + 5 * k)
-        glow = "#" + hex2(int(150 * k)) + hex2(int(200 * k)) + hex2(int(255 * k))
-        kids.append(box(32 - hw, 13, 2 * hw, 1, glow))
-        kids.append(box(32, 13 - hh, 1, 2 * hh, glow))
-        r = int(1 + 3 * k)
-        kids.append(box(32 - r, 13 - r, 2 * r + 1, 2 * r + 1, "#" + hex2(int(255 * k)) * 3))
         frames.append(render.Stack(children = kids))
     return frames
 
@@ -512,7 +527,7 @@ def make_pass(name, right):
     if name in VIEWS:
         return ("sprite", VIEWS[name], right)
     if name == "diagonal":
-        return ("diag", -28 if right else 152, right)
+        return ("diag", -22 if right else 158, right)
     return (name, None, right)
 
 def passes(view_name, direction):
