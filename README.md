@@ -18,11 +18,20 @@ Pass config on the command line, e.g. `pixlet render enterprise.star view=top di
 
 | key         | values                                                                 | default |
 |-------------|------------------------------------------------------------------------|---------|
-| `view`      | `all`, `side`, `top`, `bottom`, `diagonal`, `battle`, `approach`, `recede` | `all`   |
+| `scene1`    | `all` (full show), `side`, `top`, `bottom`, `diagonal`, `battle`, `approach`, `recede`, `random`, `none` | `all` |
+| `scene2`, `scene3` | same scenes (no `all`); `none` skips the slot (ignored when `scene1=all`) | `none` |
 | `direction` | `both` (alternate), `right`, `left`                                    | `both`  |
 | `smooth`    | `true` (2x2 anti-aliased angled views, ~95 KB) or `false` (crisp, ~83 KB) | `true`  |
 
 The Tidbyt phone app only shows these dropdowns for a published or private app; a pushed image is fixed.
+
+### Choosing scenes
+
+Pick one, two or three scenes with `scene1`..`scene3`, e.g. `scene1=battle scene2=approach scene3=recede`.
+With one scene, `direction=both` flies it both ways; with several, "alternate" flips direction from scene to scene.
+`random` picks one scene at render time. The old single `view=` key still works (it sets `scene1`).
+Install the app more than once in the Tidbyt app to get different mixes, and drag them into any order.
+Rough lengths: a side/top/bottom/diagonal pass 3.6 s each way, battle 5.2 s, approach and recede 3.3 s each.
 
 ## Pushing to your device
 

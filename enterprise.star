@@ -7,6 +7,7 @@ Author: Robin Knauerhase
 
 load("render.star", "render")
 load("math.star", "math")
+load("random.star", "random")
 load("schema.star", "schema")
 
 W = 64
@@ -58,13 +59,13 @@ def build_side():
     put(4, 9, "pp")
     put(5, 10, "pp")
     put(6, 11, "pp")
-    # saucer
+    # saucer: widest deck is row 4; the decks above and below pull in more steeply
     put(1, 27, "dddd")
-    put(2, 22, "sSSSSSSSSSSSSs")
-    put(3, 20, "sSSSSSSSSSSSSSSSSs")
+    put(2, 23, "sSSSSSSSSSSs")
+    put(3, 21, "sSSSSSSSSSSSSSSs")
     put(4, 19, "SSSSSSSSSSSSSSSSSSSS")
-    put(5, 21, "ssssssssssssssss")
-    put(6, 24, "ssssssssss")
+    put(5, 22, "ssssssssssssss")
+    put(6, 25, "ssssssss")
     # neck + secondary hull
     put(6, 21, "kk")
     put(7, 9, "eeeeeeeeeeeeee")
@@ -217,17 +218,23 @@ def streak_widgets(x_tail, y, length, right):
             out.append(box(lo, y, hi - lo, 1, shades[i]))
     return out
 
-PLANET = [("#4a86d4", 2), ("#4a86d4", 4), ("#3b70be", 4), ("#2b5aa8", 5), ("#2b5aa8", 5), ("#1f4585", 4), ("#1a3870", 4), ("#142b58", 2)]
+# Planet rows: (colour, half-width).  Blue when flying left to right, red when flying right to left.
+PLANET_HW = [2, 4, 4, 5, 5, 4, 4, 2]
+PLANET_COLORS = {
+    "right": ["#4a86d4", "#4a86d4", "#3b70be", "#2b5aa8", "#2b5aa8", "#1f4585", "#1a3870", "#142b58"],
+    "left": ["#e0866a", "#e0866a", "#c8654a", "#b04a35", "#b04a35", "#8c3826", "#6e2c1e", "#55221a"],
+}
 
-def planet_boxes(cx, cy):
-    """A small blue planet, drawn as rows of a disc (half-width in the tuple)."""
+def planet_boxes(cx, cy, right):
+    """A small planet, drawn as rows of a disc."""
     out = []
-    for i in range(len(PLANET)):
-        color, hw = PLANET[i]
+    colors = PLANET_COLORS["right" if right else "left"]
+    for i in range(len(PLANET_HW)):
+        hw = PLANET_HW[i]
         lo = max(cx - hw, 0)
         hi = min(cx + hw, W)
         if hi > lo:
-            out.append(box(lo, cy + i, hi - lo, 1, color))
+            out.append(box(lo, cy + i, hi - lo, 1, colors[i]))
     return out
 
 def build_frame(view, f, right):
@@ -251,7 +258,7 @@ def build_frame(view, f, right):
         kids.append(box(sx, st[1], 1, 1, gray(st[2])))
 
     # a planet drifting slowly past, behind the ship
-    kids.extend(planet_boxes(50 - int((1 if right else -1) * f * 0.2), 3))
+    kids.extend(planet_boxes(50 - int((1 if right else -1) * f * 0.2), 3, right))
 
     # warp streaks behind the nacelles and hull once it gets going
     if speed > 1.0:
@@ -676,31 +683,52 @@ def make_pass(name, right):
         return ("diag", -22 if right else 158, right)
     return (name, None, right)
 
-def passes(view_name, direction):
-    """List of passes to string together for the chosen view and direction."""
+ALL_SEQUENCE = ["side", "top", "diagonal", "battle", "approach", "recede"]
+RANDOM_CHOICES = ["side", "top", "bottom", "diagonal", "battle", "approach", "recede"]
+
+def passes(names, direction):
+    """Passes to string together for the chosen scenes (up to three) and direction.
+
+    One scene: sprite/diagonal scenes fly both ways when direction is "alternate".
+    Several scenes: "alternate" flips direction from one scene to the next.
+    "all" (scene 1 only) is the full show, which ignores the other slots.
+    """
+    names = [n for n in names if n != "none"]
     out = []
-    if view_name == "all":
+    if len(names) == 0 or names[0] == "all":
         # top and bottom look nearly alike, so "all" shows the plan view once (top);
         # "bottom" stays selectable on its own.
-        seq = ["side", "top", "diagonal", "battle", "approach", "recede"]
-        for i in range(len(seq)):
+        for i in range(len(ALL_SEQUENCE)):
             right = (i % 2 == 0) if direction == "both" else (direction == "right")
-            out.append(make_pass(seq[i], right))
-    elif view_name in ("approach", "recede", "battle"):
-        out.append(make_pass(view_name, True))
+            out.append(make_pass(ALL_SEQUENCE[i], right))
+    elif len(names) == 1:
+        name = names[0]
+        if name in ("approach", "recede", "battle"):
+            out.append(make_pass(name, True))
+        else:
+            if direction != "left":
+                out.append(make_pass(name, True))
+            if direction != "right":
+                out.append(make_pass(name, False))
     else:
-        if direction != "left":
-            out.append(make_pass(view_name, True))
-        if direction != "right":
-            out.append(make_pass(view_name, False))
+        for i in range(len(names)):
+            right = (i % 2 == 0) if direction == "both" else (direction == "right")
+            out.append(make_pass(names[i], right))
     return out
+
+def pick_scene(name):
+    """Resolve "random" to one concrete scene (varies between renders)."""
+    if name == "random":
+        return RANDOM_CHOICES[random.number(0, len(RANDOM_CHOICES) - 1)]
+    return name
 
 def main(config):
     direction = config.str("direction", "both")
-    view_name = config.str("view", "all")
+    scene1 = config.str("view", "") or config.str("scene1", "all")  # "view" is the old single-scene key
+    names = [pick_scene(scene1), pick_scene(config.str("scene2", "none")), pick_scene(config.str("scene3", "none"))]
     ss = 2 if config.bool("smooth", True) else 1
     frames = []
-    for kind, arg, right in passes(view_name, direction):
+    for kind, arg, right in passes(names, direction):
         if kind == "sprite":
             frames += [build_frame(arg, f, right) for f in range(FRAMES)]
         elif kind == "diag":
@@ -717,6 +745,18 @@ def main(config):
         child = render.Animation(children = frames),
     )
 
+SCENE_OPTIONS = [
+    schema.Option(display = "Side", value = "side"),
+    schema.Option(display = "Top", value = "top"),
+    schema.Option(display = "Bottom", value = "bottom"),
+    schema.Option(display = "Diagonal", value = "diagonal"),
+    schema.Option(display = "Battle", value = "battle"),
+    schema.Option(display = "Approaching", value = "approach"),
+    schema.Option(display = "Receding", value = "recede"),
+    schema.Option(display = "Random", value = "random"),
+    schema.Option(display = "None", value = "none"),
+]
+
 def get_schema():
     return schema.Schema(
         version = "1",
@@ -729,26 +769,33 @@ def get_schema():
                 default = True,
             ),
             schema.Dropdown(
-                id = "view",
-                name = "View",
-                desc = "Which angle to see the Enterprise from.",
-                icon = "eye",
+                id = "scene1",
+                name = "Scene 1",
+                desc = "First scene (or the full show). Install the app again to make a different mix.",
+                icon = "film",
                 default = "all",
-                options = [
-                    schema.Option(display = "All views", value = "all"),
-                    schema.Option(display = "Side", value = "side"),
-                    schema.Option(display = "Top", value = "top"),
-                    schema.Option(display = "Bottom", value = "bottom"),
-                    schema.Option(display = "Diagonal", value = "diagonal"),
-                    schema.Option(display = "Approaching", value = "approach"),
-                    schema.Option(display = "Receding", value = "recede"),
-                    schema.Option(display = "Battle", value = "battle"),
-                ],
+                options = [schema.Option(display = "All views (full show)", value = "all")] + SCENE_OPTIONS,
+            ),
+            schema.Dropdown(
+                id = "scene2",
+                name = "Scene 2",
+                desc = "Optional second scene (ignored for the full show).",
+                icon = "film",
+                default = "none",
+                options = SCENE_OPTIONS,
+            ),
+            schema.Dropdown(
+                id = "scene3",
+                name = "Scene 3",
+                desc = "Optional third scene (ignored for the full show).",
+                icon = "film",
+                default = "none",
+                options = SCENE_OPTIONS,
             ),
             schema.Dropdown(
                 id = "direction",
                 name = "Direction",
-                desc = "Which way the Enterprise flies.",
+                desc = "Which way it flies. Alternate flips direction between scenes (one scene flies both ways).",
                 icon = "arrowsLeftRight",
                 default = "both",
                 options = [

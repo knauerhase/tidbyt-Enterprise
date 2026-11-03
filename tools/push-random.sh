@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Render a random view and direction of the Enterprise and push it to your Tidbyt
+# Render a random scene and direction of the Enterprise and push it to your Tidbyt
 # as the installation "enterprise", quietly in the background (it won't interrupt
 # whatever is showing; it joins the rotation).
 #
@@ -26,7 +26,7 @@ dir="${dirs[RANDOM % ${#dirs[@]}]}"
 
 out="$(mktemp --suffix=.webp)"
 trap 'rm -f "$out"' EXIT
-pixlet render "$here/enterprise.star" "view=$view" "direction=$dir" -o "$out"
+pixlet render "$here/enterprise.star" "scene1=$view" "direction=$dir" -o "$out"
 
 if [ "${DRY_RUN:-0}" = "1" ]; then
   echo "dry run: rendered view=$view direction=$dir ($(stat -c %s "$out") bytes)"
