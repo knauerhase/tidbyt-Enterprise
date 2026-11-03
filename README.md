@@ -3,35 +3,43 @@
 A sweeping-by USS Enterprise (original series) for the [Tidbyt](https://tidbyt.com) 64x32 display,
 written in Starlark for [Pixlet](https://github.com/tidbyt/pixlet).
 
-The ship drifts across a starfield, then goes to warp. Views: side, top, bottom, diagonal,
-battle, approaching, and receding. "All views" plays side, top, diagonal, battle, approach and recede (bottom is
-nearly identical to top, so it's selectable on its own but left out of the loop). Side-view passes fly left-to-right or right-to-left over a drifting planet; the approach
-shows the registry (NCC-1701) fading in and out before the ship fills the screen; the recede just vanishes.
+The ship drifts across a starfield, then goes to warp. The show has three short **parts**, each sized to fit one
+display slot (about 10 seconds), so install the app up to three times and drag them next to each other:
+
+| Part | Scenes | Length |
+|------|--------|--------|
+| 1: Flyby (default) | side pass going right, top pass going left | 7.2 s |
+| 2: Skirmish | diagonal pass, then a battle: a Klingon D7 closes, blue phasers fire, it blows up | 8.8 s |
+| 3: Head-on | the Enterprise approaches (NCC-1701 fades in, full-screen white-out), then recedes and vanishes | 6.6 s |
+| Surprise me | two different scenes picked at random | up to 8.8 s |
+
+Settings in the Tidbyt app: **Part of the show**, and **Reverse direction** (flip the side, top and diagonal passes).
+Smooth (2x2 anti-aliased) edges are always on.
 
 ## Run it
 
     pixlet serve enterprise.star                 # preview at http://localhost:8080
-    pixlet render enterprise.star -o enterprise.webp
-    pixlet push --installation-id enterprise <device-id> enterprise.webp
+    pixlet render enterprise.star part=skirmish -o enterprise.webp
+    pixlet push --installation-id enterprise2 <device-id> enterprise.webp
 
-Pass config on the command line, e.g. `pixlet render enterprise.star view=top direction=left`.
+Installation IDs must be alphanumeric. A pushed image is a fixed animation: it plays for the device's display time and ignores
+`show_full_animation` and the settings form, which only apply to apps published in the community store. To see all three parts on a
+device by push, push three installations (`part=flyby`, `part=skirmish`, `part=headon`) and drag them together.
 
-| key         | values                                                                 | default |
-|-------------|------------------------------------------------------------------------|---------|
-| `scene1`    | `all` (full show), `side`, `top`, `bottom`, `diagonal`, `battle`, `approach`, `recede`, `random`, `none` | `all` |
-| `scene2`, `scene3` | same scenes (no `all`); `none` skips the slot (ignored when `scene1=all`) | `none` |
-| `direction` | `both` (alternate), `right`, `left`                                    | `both`  |
-| `smooth`    | `true` (2x2 anti-aliased angled views, ~95 KB) or `false` (crisp, ~83 KB) | `true`  |
+### Command-line options
 
-The Tidbyt phone app only shows these dropdowns for a published or private app; a pushed image is fixed.
+| key | values | default |
+|-----|--------|---------|
+| `part` | `flyby`, `skirmish`, `headon`, `surprise` | `flyby` |
+| `reverse` | `true` / `false` | `false` |
+| `smooth` | `true` (2x2 anti-aliased angled views) or `false` (crisp) | `true` |
+| `scene1`, `scene2`, `scene3` | `all` (full 22 s show, scene1 only), `side`, `top`, `bottom`, `diagonal`, `battle`, `approach`, `recede`, `random`, `none` | unset |
+| `direction` | `both` (alternate), `right`, `left` (with `scene1`..`scene3`) | `both` |
 
-### Choosing scenes
-
-Pick one, two or three scenes with `scene1`..`scene3`, e.g. `scene1=battle scene2=approach scene3=recede`.
-With one scene, `direction=both` flies it both ways; with several, "alternate" flips direction from scene to scene.
-`random` picks one scene at render time. The old single `view=` key still works (it sets `scene1`).
-Install the app more than once in the Tidbyt app to get different mixes, and drag them into any order.
-Rough lengths: a side/top/bottom/diagonal pass 3.6 s each way, battle 5.2 s, approach and recede 3.3 s each.
+`scene1`..`scene3` (and the older single `view=` key) are for scripting and tinkering and don't appear in the phone app's
+settings by default; set `SHOW_ADVANCED_SETTINGS = True` in `enterprise.star` to show them (plus Direction and Smooth edges) in the form.
+Setting any scene overrides `part`. Scene lengths: side/top/bottom/diagonal 3.6 s per pass, battle 5.2 s, approach and
+recede 3.3 s.
 
 ## Pushing to your device
 

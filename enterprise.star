@@ -722,13 +722,54 @@ def pick_scene(name):
         return RANDOM_CHOICES[random.number(0, len(RANDOM_CHOICES) - 1)]
     return name
 
+# The three "parts" of the show, each short enough for one display slot (~10 s).
+PARTS = {
+    "flyby": [("side", True), ("top", False)],  # 7.2 s
+    "skirmish": [("diagonal", True), ("battle", True)],  # 8.8 s
+    "headon": [("approach", True), ("recede", True)],  # 6.7 s
+}
+PART_NAMES = ["flyby", "skirmish", "headon"]
+
+def scene_overrides(config):
+    """True if scene1..scene3 / the old view key ask for something other than the chosen part.
+
+    These are command-line options, and also available in the settings form when
+    SHOW_ADVANCED_SETTINGS is switched on. Their form defaults ("part", "none") mean "no override".
+    """
+    return bool(config.get("view")) or config.str("scene1", "part") != "part" or config.str("scene2", "none") != "none" or config.str("scene3", "none") != "none"
+
+def part_passes(part, reverse):
+    """Passes for one part. "surprise" picks two different scenes at random (any pair fits in ~9 s)."""
+    out = []
+    if part == "surprise":
+        i = random.number(0, len(RANDOM_CHOICES) - 1)
+        j = random.number(0, len(RANDOM_CHOICES) - 2)
+        if j >= i:
+            j += 1
+        picks = [(RANDOM_CHOICES[i], True), (RANDOM_CHOICES[j], False)]
+    else:
+        picks = PARTS.get(part, PARTS["flyby"])
+    for name, right in picks:
+        if name in ("battle", "approach", "recede"):
+            out.append(make_pass(name, True))  # these have a fixed direction
+        else:
+            out.append(make_pass(name, right != reverse))
+    return out
+
 def main(config):
-    direction = config.str("direction", "both")
-    scene1 = config.str("view", "") or config.str("scene1", "all")  # "view" is the old single-scene key
-    names = [pick_scene(scene1), pick_scene(config.str("scene2", "none")), pick_scene(config.str("scene3", "none"))]
-    ss = 2 if config.bool("smooth", True) else 1
+    ss = 2 if config.bool("smooth", True) else 1  # always smooth in the app; smooth=false is a command-line option
+    if scene_overrides(config):
+        # Scene mix: scene1..scene3 (or the old view key) plus direction.
+        direction = config.str("direction", "both")
+        scene1 = config.str("view", "") or config.str("scene1", "all")
+        if scene1 == "part":
+            scene1 = "all"
+        names = [pick_scene(scene1), pick_scene(config.str("scene2", "none")), pick_scene(config.str("scene3", "none"))]
+        plan = passes(names, direction)
+    else:
+        plan = part_passes(config.str("part", "flyby"), config.bool("reverse", False))
     frames = []
-    for kind, arg, right in passes(names, direction):
+    for kind, arg, right in plan:
         if kind == "sprite":
             frames += [build_frame(arg, f, right) for f in range(FRAMES)]
         elif kind == "diag":
@@ -745,6 +786,10 @@ def main(config):
         child = render.Animation(children = frames),
     )
 
+# Flip this to True to show the scene pickers, direction and smooth-edges settings in the form as well
+# (kept so we can offer them if people prefer a richer settings screen).
+SHOW_ADVANCED_SETTINGS = False
+
 SCENE_OPTIONS = [
     schema.Option(display = "Side", value = "side"),
     schema.Option(display = "Top", value = "top"),
@@ -757,52 +802,79 @@ SCENE_OPTIONS = [
     schema.Option(display = "None", value = "none"),
 ]
 
+def advanced_fields():
+    return [
+        schema.Toggle(
+            id = "smooth",
+            name = "Smooth edges",
+            desc = "Anti-alias the angled and head-on views (larger file).",
+            icon = "wandMagicSparkles",
+            default = True,
+        ),
+        schema.Dropdown(
+            id = "scene1",
+            name = "Scene 1",
+            desc = "Override the part with your own mix: first scene (or the full 22 s show).",
+            icon = "film",
+            default = "part",
+            options = [
+                schema.Option(display = "Use the part above", value = "part"),
+                schema.Option(display = "All views (full show)", value = "all"),
+            ] + SCENE_OPTIONS,
+        ),
+        schema.Dropdown(
+            id = "scene2",
+            name = "Scene 2",
+            desc = "Optional second scene.",
+            icon = "film",
+            default = "none",
+            options = SCENE_OPTIONS,
+        ),
+        schema.Dropdown(
+            id = "scene3",
+            name = "Scene 3",
+            desc = "Optional third scene.",
+            icon = "film",
+            default = "none",
+            options = SCENE_OPTIONS,
+        ),
+        schema.Dropdown(
+            id = "direction",
+            name = "Direction",
+            desc = "Which way scene passes fly. Alternate flips direction between scenes (one scene flies both ways).",
+            icon = "arrowsLeftRight",
+            default = "both",
+            options = [
+                schema.Option(display = "Alternate", value = "both"),
+                schema.Option(display = "Left to right", value = "right"),
+                schema.Option(display = "Right to left", value = "left"),
+            ],
+        ),
+    ]
+
 def get_schema():
     return schema.Schema(
         version = "1",
         fields = [
-            schema.Toggle(
-                id = "smooth",
-                name = "Smooth edges",
-                desc = "Anti-alias the angled and head-on views (larger file).",
-                icon = "wandMagicSparkles",
-                default = True,
-            ),
             schema.Dropdown(
-                id = "scene1",
-                name = "Scene 1",
-                desc = "First scene (or the full show). Install the app again to make a different mix.",
+                id = "part",
+                name = "Part of the show",
+                desc = "Install the app up to three times, one per part, to see the whole show.",
                 icon = "film",
-                default = "all",
-                options = [schema.Option(display = "All views (full show)", value = "all")] + SCENE_OPTIONS,
-            ),
-            schema.Dropdown(
-                id = "scene2",
-                name = "Scene 2",
-                desc = "Optional second scene (ignored for the full show).",
-                icon = "film",
-                default = "none",
-                options = SCENE_OPTIONS,
-            ),
-            schema.Dropdown(
-                id = "scene3",
-                name = "Scene 3",
-                desc = "Optional third scene (ignored for the full show).",
-                icon = "film",
-                default = "none",
-                options = SCENE_OPTIONS,
-            ),
-            schema.Dropdown(
-                id = "direction",
-                name = "Direction",
-                desc = "Which way it flies. Alternate flips direction between scenes (one scene flies both ways).",
-                icon = "arrowsLeftRight",
-                default = "both",
+                default = "flyby",
                 options = [
-                    schema.Option(display = "Alternate", value = "both"),
-                    schema.Option(display = "Left to right", value = "right"),
-                    schema.Option(display = "Right to left", value = "left"),
+                    schema.Option(display = "1: Flyby (side and top passes)", value = "flyby"),
+                    schema.Option(display = "2: Skirmish (diagonal pass and a battle)", value = "skirmish"),
+                    schema.Option(display = "3: Head-on (approach and recede)", value = "headon"),
+                    schema.Option(display = "Surprise me (two random scenes)", value = "surprise"),
                 ],
             ),
-        ],
+            schema.Toggle(
+                id = "reverse",
+                name = "Reverse direction",
+                desc = "Fly the passes the other way round (the battle and head-on scenes are fixed).",
+                icon = "arrowsLeftRight",
+                default = False,
+            ),
+        ] + (advanced_fields() if SHOW_ADVANCED_SETTINGS else []),
     )
