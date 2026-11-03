@@ -61,13 +61,13 @@ def build_side():
     put(6, 11, "pp")
     # saucer: widest deck is row 4; the decks above and below pull in more steeply
     put(1, 27, "dddd")
-    put(2, 23, "sSSSSSSSSSSs")
-    put(3, 21, "sSSSSSSSSSSSSSSs")
+    put(2, 25, "sSSSSSSs")
+    put(3, 23, "sSSSSSSSSSSs")
     put(4, 19, "SSSSSSSSSSSSSSSSSSSS")
-    put(5, 22, "ssssssssssssss")
-    put(6, 25, "ssssssss")
+    put(5, 24, "ssssssssss")
+    put(6, 27, "ssss")
     # neck + secondary hull
-    put(6, 21, "kk")
+    put(6, 23, "kk")
     put(7, 9, "eeeeeeeeeeeeee")
     put(8, 8, "eeeeeeeeeeeeeeee")
     put(9, 9, "EEEEEEEEEEEEEE")
