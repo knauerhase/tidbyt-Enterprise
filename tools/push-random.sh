@@ -9,7 +9,7 @@
 # Set DRY_RUN=1 to render without pushing.
 #
 # Example cron entry (hourly):
-#   0 * * * * /path/to/tidbyt-enterprise/tools/push-random.sh >> ~/.cache/tidbyt-enterprise.log 2>&1
+#   0 * * * * /path/to/tidbyt-Enterprise/tools/push-random.sh >> ~/.cache/tidbyt-Enterprise.log 2>&1
 set -euo pipefail
 
 ENV_FILE="${TIDBYT_ENV:-$HOME/.config/tidbyt/env}"
