@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Render a random scene and direction of the Enterprise and push it to your Tidbyt
-# as the installation "enterprise", quietly in the background (it won't interrupt
+# as the installation "Enterprise", quietly in the background (it won't interrupt
 # whatever is showing; it joins the rotation).
 #
 # Needs pixlet on PATH and an env file (default ~/.config/tidbyt/env, chmod 600) with:
@@ -32,5 +32,5 @@ if [ "${DRY_RUN:-0}" = "1" ]; then
   echo "dry run: rendered view=$view direction=$dir ($(stat -c %s "$out") bytes)"
   exit 0
 fi
-pixlet push --background --api-token "$TIDBYT_API_KEY" --installation-id enterprise "$TIDBYT_DEVICE_ID" "$out"
+pixlet push --background --api-token "$TIDBYT_API_KEY" --installation-id Enterprise "$TIDBYT_DEVICE_ID" "$out"
 echo "$(date -Is) pushed view=$view direction=$dir"

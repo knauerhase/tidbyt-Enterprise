@@ -1,4 +1,4 @@
-# tidbyt-enterprise
+# Tidbyt Enterprise
 
 A sweeping-by USS Enterprise (original series) for the [Tidbyt](https://tidbyt.com) 64x32 display,
 written in Starlark for [Pixlet](https://github.com/tidbyt/pixlet).
@@ -20,11 +20,11 @@ Smooth (2x2 anti-aliased) edges are always on.
 
     pixlet serve enterprise.star                 # preview at http://localhost:8080
     pixlet render enterprise.star part=skirmish -o enterprise.webp
-    pixlet push --installation-id enterprise2 <device-id> enterprise.webp
+    pixlet push --installation-id Enterprise2 <device-id> enterprise.webp
 
 Installation IDs must be alphanumeric. A pushed image is a fixed animation: it plays for the device's display time and ignores
 `show_full_animation` and the settings form, which only apply to apps published in the community store. To see all three parts on a
-device by push, push three installations (`part=flyby`, `part=skirmish`, `part=headon`) and drag them together.
+device by push, push three installations (`Enterprise1`..`Enterprise3` with `part=flyby`, `part=skirmish`, `part=headon`) and drag them together.
 
 ### Command-line options
 
@@ -49,7 +49,7 @@ Put your device ID and API key in `~/.config/tidbyt/env` (chmod 600):
     export TIDBYT_API_KEY=...
 
 Installation IDs must be alphanumeric. `tools/push-random.sh` renders a random view and direction and pushes it
-quietly (in the background) as installation `enterprise`; run it from cron for a varied flyby. `DRY_RUN=1` renders without pushing.
+quietly (in the background) as installation `Enterprise`; run it from cron for a varied flyby. `DRY_RUN=1` renders without pushing.
 
 ## Modding
 
