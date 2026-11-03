@@ -6,6 +6,7 @@ Author: Robin Knauerhase
 """
 
 load("render.star", "render")
+load("math.star", "math")
 load("schema.star", "schema")
 
 W = 64
@@ -83,14 +84,15 @@ def build_plan(bottom):
         put(top_row, 17, "b")
         put(shade_row, 3, "NNNNNNNNNNNNNN")
         put(shade_row, 17, "b")
-    for r in range(3, 8):
-        put(r, 12, "pp")
-    for r in range(11, 16):
-        put(r, 12, "pp")
+    for i in range(4):
+        put(3 + i, 13 - i, "pp")
+        put(15 - i, 13 - i, "pp")
     # secondary hull (mostly hidden behind the saucer)
-    put(8, 9, "eeeeeeeeeeeeeeeeee")
-    put(9, 9, "eeeeeeeeeeeeeeeeee")
-    put(10, 9, "EEEEEEEEEEEEEEEEEE")
+    put(7, 8, "eeeeeeeeeeeeeeeee")
+    put(8, 6, "eeeeeeeeeeeeeeeeeeee")
+    put(9, 6, "eeeeeeeeeeeeeeeeeeee")
+    put(10, 6, "EEEEEEEEEEEEEEEEEEEE")
+    put(11, 8, "EEEEEEEEEEEEEEEEE")
     # saucer: a disc centred at (31, 9)
     for r in range(sh):
         for c in range(sw):
@@ -164,14 +166,7 @@ def ship_widgets(view, x0, y0, right, frame):
     return out
 
 def sin(x):
-    """Small sine (Taylor, after range reduction) -- avoids loading math."""
-    tau = 6.283185
-    x = x - tau * int(x / tau)
-    if x > 3.141593:
-        x -= tau
-    elif x < -3.141593:
-        x += tau
-    return x - x * x * x / 6 + x * x * x * x * x / 120 - x * x * x * x * x * x * x / 5040
+    return math.sin(x)
 
 def make_stars(n):
     """Deterministic pseudo-random star list [(x, y, brightness)]."""
@@ -245,23 +240,282 @@ def build_frame(view, f, right):
     kids.extend(ship_widgets(view, x0, y0, right, f))
     return render.Stack(children = kids)
 
-def passes(view_name, direction):
-    """List of (view, right?) passes for the chosen view and direction."""
-    names = ["side", "top", "bottom"] if view_name == "all" else [view_name]
+
+# ---------------------------------------------------------------------------
+# Shape models for the angled and head-on views.  The ship is a few circles,
+# capsules and segments in "ship coordinates" (nose toward +x); each frame we
+# rotate/scale it onto the 64x32 grid, pixel by pixel.
+# ---------------------------------------------------------------------------
+GR = "#afb4be"
+DK = "#737884"
+SA = "#cdd2dc"
+RED = "#ff3200"
+ORG = "#ff9628"
+WH = "#f0f0fa"
+GLOW = "#5a8cff"
+
+def disc(cx, cy, r, color):
+    return ("disc", cx, cy, r * r, color)
+
+def cap(x0, x1, y, r, color):
+    return ("cap", x0, x1, y, r * r, color)
+
+def seg(ax, ay, bx, by, r, color):
+    dx = bx - ax
+    dy = by - ay
+    return ("seg", ax, ay, dx, dy, dx * dx + dy * dy, r * r, color)
+
+def ell(cx, cy, rx, ry, color):
+    return ("ell", cx, cy, 1.0 / (rx * rx), 1.0 / (ry * ry), color)
+
+def model_top():
     out = []
-    for n in names:
+    for sd in (-1, 1):
+        out.append(cap(-6.2, -1.6, sd * 2.6, 0.55, GR))
+    for sd in (-1, 1):
+        out.append(disc(-1.6, sd * 2.6, 0.6, "b"))
+    for sd in (-1, 1):
+        out.append(seg(-3.2, sd * 0.4, -4.4, sd * 2.5, 0.3, DK))
+    out.append(cap(-4.8, 0.5, 0, 0.75, DK))
+    out.append(disc(2.6, 0, 3.0, SA))
+    out.append(disc(2.6, 0, 0.5, WH))
+    return out
+
+def model_face(rear):
+    nac = GLOW if rear else "b"
+    out = []
+    for sd in (-1, 1):
+        out.append(seg(sd * 0.4, -1.7, sd * 2.5, 0.9, 0.25, DK))
+    out.append(seg(0, -0.2, 0, -1.6, 0.3, DK))
+    out.append(disc(0, -2.0, 0.75, GR))
+    if not rear:
+        out.append(disc(0, -2.0, 0.4, ORG))
+    for sd in (-1, 1):
+        out.append(disc(sd * 2.5, 0.9, 0.6, nac))
+    out.append(ell(0, 0, 3.0, 0.45, SA))
+    if not rear:
+        out.append(ell(0, 0.45, 0.6, 0.35, WH))
+    return out
+
+MODEL_TOP = model_top()
+MODEL_FACE = model_face(False)
+MODEL_REAR = model_face(True)
+
+def hit(shapes, px, py):
+    """Colour of the topmost shape covering (px, py), or None."""
+    for i in range(len(shapes) - 1, -1, -1):
+        sh = shapes[i]
+        k = sh[0]
+        if k == "disc":
+            dx = px - sh[1]
+            dy = py - sh[2]
+            if dx * dx + dy * dy <= sh[3]:
+                return sh[4]
+        elif k == "cap":
+            dx = px - min(max(px, sh[1]), sh[2])
+            dy = py - sh[3]
+            if dx * dx + dy * dy <= sh[4]:
+                return sh[5]
+        elif k == "seg":
+            dx = px - sh[1]
+            dy = py - sh[2]
+            t = min(max((dx * sh[3] + dy * sh[4]) / sh[5], 0.0), 1.0)
+            ex = dx - t * sh[3]
+            ey = dy - t * sh[4]
+            if ex * ex + ey * ey <= sh[6]:
+                return sh[7]
+        else:
+            dx = px - sh[1]
+            dy = py - sh[2]
+            if dx * dx * sh[3] + dy * dy * sh[4] <= 1.0:
+                return sh[5]
+    return None
+
+def draw_model(shapes, cx, cy, ang, scale, frame, flipv):
+    """Boxes for the model centred at (cx, cy), heading ang degrees (0 = right)."""
+    a = ang * math.pi / 180.0
+    ca = math.cos(a)
+    sa = math.sin(a)
+    inv = 1.0 / scale
+    r = int(scale * 7.2) + 1
+    x_lo = max(0, int(cx) - r)
+    x_hi = min(W, int(cx) + r + 1)
+    y_lo = max(0, int(cy) - r)
+    y_hi = min(H, int(cy) + r + 1)
+    pulse = 90 + int(80 * (1 + sin(frame * 0.7)) / 2)
+    bussard = "#ff" + hex2(pulse) + "00"
+    out = []
+    for yy in range(y_lo, y_hi):
+        run_col = None
+        run_start = x_lo
+        for xx in range(x_lo, x_hi + 1):
+            col = None
+            if xx < x_hi:
+                dx = xx + 0.5 - cx
+                dy = yy + 0.5 - cy
+                px = (dx * ca + dy * sa) * inv
+                py = (dy * ca - dx * sa) * inv
+                if flipv:
+                    py = -py
+                col = hit(shapes, px, py)
+                if col == "b":
+                    col = bussard
+            if col != run_col:
+                if run_col != None:
+                    out.append(box(run_start, yy, xx - run_start, 1, run_col))
+                run_start = xx
+                run_col = col
+    return out
+
+def lcg(seed):
+    return (seed * 1103515245 + 12345) % 2147483648
+
+def star_boxes(stars):
+    return [box(st[0], st[1], 1, 1, gray(st[2])) for st in stars if (0 <= st[0] and st[0] < W and 0 <= st[1] and st[1] < H)]
+
+def build_diag_frame(f, ang):
+    """Plan-view ship crossing the panel diagonally at heading ang."""
+    s = f / (FRAMES - 1.0)
+    prog = 0.55 * s + 0.45 * s * s * s * s
+    speed = 0.4 + 2.2 * s * s * s
+    a = ang * math.pi / 180.0
+    fx = math.cos(a)
+    fy = math.sin(a)
+    sc = 2.5
+    total = 2 * (abs(fx) * 32 + abs(fy) * 16 + sc * 7.2)
+    d = total * prog
+    cx = 32 - fx * total / 2 + fx * d - fy * 2
+    cy = 16 - fy * total / 2 + fy * d + fx * 2
+
+    kids = [render.Box(width = W, height = H, color = BG)]
+    k = f * (0.25 + 0.5 * s)
+    kids.extend(star_boxes([((st[0] - int(fx * k)) % W, (st[1] - int(fy * k)) % H, st[2]) for st in STARS]))
+
+    if speed > 1.0:
+        n = int(speed * 7)
+        for sd in (-1, 1):
+            tx = cx + sc * (-6.4 * fx - sd * 2.6 * fy)
+            ty = cy + sc * (-6.4 * fy + sd * 2.6 * fx)
+            for i in range(1, n):
+                fade = 1.0 - i / float(n)
+                kids.append(box(int(tx - fx * i), int(ty - fy * i), 1, 1, "#" + hex2(int(120 * fade)) + hex2(int(160 * fade)) + hex2(int(255 * fade))))
+                if int(tx - fx * i) < 0 or int(tx - fx * i) >= W:
+                    break
+    kids.extend(draw_model(MODEL_TOP, cx, cy, ang, sc, f, False))
+    return render.Stack(children = kids)
+
+APPROACH_FRAMES = 60
+RECEDE_FRAMES = 60
+
+def burst_stars(nf):
+    """Per-frame star positions streaming outward from the centre."""
+    seed = 777
+    st = []
+    for _ in range(24):
+        seed = lcg(seed)
+        x = seed % W
+        seed = lcg(seed)
+        y = seed % H
+        seed = lcg(seed)
+        st.append([float(x), float(y), 70 + seed % 130])
+    out = []
+    for f in range(nf):
+        s = f / (nf - 1.0)
+        sp = 0.25 + 1.2 * s
+        cur = []
+        for t in st:
+            dx = t[0] - 32.0
+            dy = t[1] - 16.0
+            d = math.sqrt(dx * dx + dy * dy) + 0.3
+            step = sp * (0.3 + d / 20.0) / d
+            t[0] += dx * step
+            t[1] += dy * step
+            if t[0] < 0 or t[0] >= W or t[1] < 0 or t[1] >= H:
+                seed = lcg(seed)
+                t[0] = 32.0 + seed % 7 - 3
+                seed = lcg(seed)
+                t[1] = 16.0 + seed % 5 - 2
+            cur.append((int(t[0]), int(t[1]), int(t[2] * min(1.0, d / 10.0))))
+        out.append(cur)
+    return out
+
+def approach_frames():
+    stars = burst_stars(APPROACH_FRAMES)
+    frames = []
+    for f in range(APPROACH_FRAMES):
+        s = f / (APPROACH_FRAMES - 1.0)
+        sc = 0.12 * math.pow(58.0, s)
+        kids = [render.Box(width = W, height = H, color = BG)]
+        kids.extend(star_boxes(stars[f]))
+        kids.extend(draw_model(MODEL_FACE, 32, 17, 0, sc, f, True))
+        frames.append(render.Stack(children = kids))
+    for i in range(6):  # it whooshes past: white-out that fades
+        k = 1.0 - i / 6.0
+        c = "#" + hex2(int(240 * k)) + hex2(int(240 * k)) + hex2(int(250 * k + 14 * (1 - k)))
+        frames.append(render.Box(width = W, height = H, color = c))
+    return frames
+
+def recede_frames():
+    frames = []
+    for f in range(RECEDE_FRAMES):
+        s = f / (RECEDE_FRAMES - 1.0)
+        sc = 7.0 * math.pow(0.03, s)
+        kids = [render.Box(width = W, height = H, color = BG)]
+        kids.extend(star_boxes(STARS))
+        kids.extend(draw_model(MODEL_REAR, 32, 17 - 4 * s, 0, sc, f, True))
+        frames.append(render.Stack(children = kids))
+    # warp flash where it disappears
+    for i in range(8):
+        k = 1.0 - i / 8.0
+        kids = [render.Box(width = W, height = H, color = BG)]
+        kids.extend(star_boxes(STARS))
+        hw = int(2 + 12 * k)
+        hh = int(1 + 5 * k)
+        glow = "#" + hex2(int(150 * k)) + hex2(int(200 * k)) + hex2(int(255 * k))
+        kids.append(box(32 - hw, 13, 2 * hw, 1, glow))
+        kids.append(box(32, 13 - hh, 1, 2 * hh, glow))
+        r = int(1 + 3 * k)
+        kids.append(box(32 - r, 13 - r, 2 * r + 1, 2 * r + 1, "#" + hex2(int(255 * k)) * 3))
+        frames.append(render.Stack(children = kids))
+    return frames
+
+def make_pass(name, right):
+    if name in VIEWS:
+        return ("sprite", VIEWS[name], right)
+    if name == "diagonal":
+        return ("diag", -28 if right else 152, right)
+    return (name, None, right)
+
+def passes(view_name, direction):
+    """List of passes to string together for the chosen view and direction."""
+    out = []
+    if view_name == "all":
+        seq = ["side", "top", "bottom", "diagonal", "approach", "recede"]
+        for i in range(len(seq)):
+            right = (i % 2 == 0) if direction == "both" else (direction == "right")
+            out.append(make_pass(seq[i], right))
+    elif view_name in ("approach", "recede"):
+        out.append(make_pass(view_name, True))
+    else:
         if direction != "left":
-            out.append((VIEWS[n], True))
+            out.append(make_pass(view_name, True))
         if direction != "right":
-            out.append((VIEWS[n], False))
+            out.append(make_pass(view_name, False))
     return out
 
 def main(config):
     direction = config.str("direction", "both")
     view_name = config.str("view", "all")
     frames = []
-    for view, right in passes(view_name, direction):
-        frames += [build_frame(view, f, right) for f in range(FRAMES)]
+    for kind, arg, right in passes(view_name, direction):
+        if kind == "sprite":
+            frames += [build_frame(arg, f, right) for f in range(FRAMES)]
+        elif kind == "diag":
+            frames += [build_diag_frame(f, arg) for f in range(FRAMES)]
+        elif kind == "approach":
+            frames += approach_frames()
+        else:
+            frames += recede_frames()
     return render.Root(
         delay = DELAY,
         show_full_animation = True,
@@ -283,6 +537,9 @@ def get_schema():
                     schema.Option(display = "Side", value = "side"),
                     schema.Option(display = "Top", value = "top"),
                     schema.Option(display = "Bottom", value = "bottom"),
+                    schema.Option(display = "Diagonal", value = "diagonal"),
+                    schema.Option(display = "Approaching", value = "approach"),
+                    schema.Option(display = "Receding", value = "recede"),
                 ],
             ),
             schema.Dropdown(
