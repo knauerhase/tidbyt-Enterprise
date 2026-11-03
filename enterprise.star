@@ -29,6 +29,11 @@ COLORS = {
     "N": "#6e7380",  # nacelle shadow
     "p": "#6e737d",  # pylon
     "F": "#555a66",  # far nacelle (behind the near one)
+    "H": "#7a9a58",  # Klingon hull
+    "h": "#c4e29a",  # Klingon bridge highlight
+    "B": "#4d6a38",  # Klingon boom
+    "V": "#5c7a42",  # Klingon wings
+    "R": "#d03a2a",  # Klingon wing-tip glow
 }
 
 def build_side():
@@ -497,8 +502,8 @@ def approach_frames(ss):
         if f < 38:  # registry fades in and out while the ship is still small
             k = min(1.0, f / 8.0) * (1.0 - max(0.0, (f - 28) / 10.0))
             kids.append(render.Padding(
-                pad = (16, 25, 0, 0),
-                child = render.Text(content = "NCC-1701", font = "tom-thumb", color = "#" + hex2(int(122 * k)) + hex2(int(143 * k)) + hex2(int(184 * k))),
+                pad = (12, 23, 0, 0),
+                child = render.Text(content = "NCC-1701", font = "5x8", color = "#" + hex2(int(122 * k)) + hex2(int(143 * k)) + hex2(int(184 * k))),
             ))
         kids.extend(draw_model(MODEL_FACE, 32, 17, 0, sc, f, True, ss))
         frames.append(render.Stack(children = kids))
@@ -523,6 +528,147 @@ def recede_frames(ss):
         frames.append(render.Stack(children = kids))
     return frames
 
+
+# ---------------------------------------------------------------------------
+# Battle: the Enterprise (plan view) drops out of warp mid-screen, a Klingon
+# D7 closes from the right, the Enterprise fires phasers, the Klingon blows
+# up, and the Enterprise goes on its way.
+# ---------------------------------------------------------------------------
+BATTLE_FRAMES = 104
+B_FIRE = 32  # phasers start
+B_BOOM = 48  # Klingon explodes
+B_LEAVE = 72  # Enterprise warps off
+E_X_REST = 0  # Enterprise's left edge while parked
+K_X_REST = 51  # Klingon's left edge while parked
+YC = 15  # row both ships are centred on
+
+def build_klingon():
+    """Very simple D7, plan view, facing left: round head, boom, swept wings."""
+    sw = 13
+    sh = 11
+    g = [["." for _ in range(sw)] for _ in range(sh)]
+    for r in range(sh):
+        for c in range(sw):
+            d2 = (c - 2.5) * (c - 2.5) + (r - 5) * (r - 5)
+            if d2 <= 6.5:
+                g[r][c] = "H"
+    g[4][1] = "h"
+    g[5][1] = "h"
+    for r in (4, 5, 6):
+        for c in range(5, 9):
+            g[r][c] = "B"
+    for i in range(6):
+        for c in (7 + i, 8 + i):
+            if c < sw:
+                g[5 - i][c] = "V"
+                g[5 + i][c] = "V"
+    g[0][12] = "R"
+    g[10][12] = "R"
+    return ["".join(r) for r in g]
+
+KLINGON = {"rows": build_klingon(), "w": 13, "h": 11}
+
+def battle_ex(f):
+    """Enterprise's left edge at frame f: drop out of warp, park, then accelerate away."""
+    if f < 24:
+        u = f / 23.0
+        return -28.0 + 28.0 * (1.0 - (1.0 - u) * (1.0 - u) * (1.0 - u))  # starts partly on-screen so a still frame shows the ship
+    if f < B_LEAVE:
+        return float(E_X_REST)
+    u = (f - B_LEAVE) / 31.0
+    if u > 1.0:
+        u = 1.0
+    return 74.0 * u * u * u
+
+def battle_kx(f):
+    """Klingon's left edge at frame f (None before it appears)."""
+    if f < 12:
+        return None
+    u = min(1.0, (f - 12) / 19.0)
+    return int(64 - (64 - K_X_REST) * (1.0 - (1.0 - u) * (1.0 - u)))
+
+def scale_hex(c, k):
+    return "#" + hex2(int(int(c[1:3], 16) * k)) + hex2(int(int(c[3:5], 16) * k)) + hex2(int(int(c[5:7], 16) * k))
+
+def disc_boxes(cx, cy, r, color):
+    out = []
+    ri = int(r)
+    for dy in range(-ri, ri + 1):
+        hw = int(math.sqrt(r * r - dy * dy) + 0.5)
+        lo = max(cx - hw, 0)
+        hi = min(cx + hw + 1, W)
+        y = cy + dy
+        if hi > lo and y >= 0 and y < H:
+            out.append(box(lo, y, hi - lo, 1, color))
+    return out
+
+def beam_boxes(x0, y0, x1, y1, grow, color):
+    out = []
+    n = 16
+    for i in range(int(n * grow) + 1):
+        t = i / float(n)
+        out.append(box(int(x0 + (x1 - x0) * t), int(y0 + (y1 - y0) * t), 1, 1, color))
+    return out
+
+DEBRIS = [(2.0 * math.pi * i / 14.0 + 0.2 * (i % 3), 0.7 + 0.35 * (i % 4)) for i in range(14)]
+
+def build_battle_frame(f):
+    view = VIEWS["top"]
+    y0 = (H - view["h"]) // 2
+    ex = battle_ex(f)
+    sp = ex - battle_ex(max(f - 1, 0))
+    kids = [render.Box(width = W, height = H, color = BG)]
+
+    # stars slide opposite to the Enterprise's travel
+    drift = int(ex * 0.2)
+    kids.extend(star_boxes([((st[0] - drift) % W, st[1], st[2]) for st in STARS]))
+
+    # warp streaks while it is dropping out of / going to warp
+    x0 = int(ex)
+    if sp > 1.5:
+        length = int(sp * 2.2)
+        for row, off in view["streaks"]:
+            kids.extend(streak_widgets(x0 + off, y0 + row, length, True))
+    kids.extend(ship_widgets(view, x0, y0, True, f))
+
+    kx = battle_kx(f)
+    if kx != None and f < B_BOOM:
+        shake = 1 if (f >= B_FIRE + 3 and f % 2 == 0) else 0
+        kids.extend(ship_widgets(KLINGON, kx, YC - 5 + shake, True, f))
+        if f >= B_FIRE:  # phaser beams from the saucer rim converge on the Klingon
+            j = f - B_FIRE
+            grow = min(1.0, (j + 1) / 3.0)
+            color = "#3aa0ff" if j % 2 == 0 else "#7fd0ff"  # TOS phasers: bright blue
+            for dy in (-2, 2):
+                kids.extend(beam_boxes(38 + x0 - E_X_REST, YC + dy, kx + 2, YC + shake, grow, color))
+            kids.append(box(kx, YC - 1 + shake, 3, 3, "#e8f6ff" if j % 2 == 0 else "#9ad8ff"))
+
+    if f >= B_BOOM and f < B_LEAVE:
+        j = f - B_BOOM
+        cx = K_X_REST + 5
+        k = 1.0 if j < 9 else max(0.0, 1.0 - (j - 8) / 12.0)
+        r = min(9.0, 1.0 + j * 1.2)
+        if j == 0:
+            kids.extend(disc_boxes(cx, YC, 3.5, "#ffffff"))
+        elif k > 0.05:
+            kids.extend(disc_boxes(cx, YC, r, scale_hex("#b3261c", k)))
+            kids.extend(disc_boxes(cx, YC, r * 0.75, scale_hex("#ff7b14", k)))
+            kids.extend(disc_boxes(cx, YC, r * 0.5, scale_hex("#ffd23c", k)))
+            if j < 8:
+                kids.extend(disc_boxes(cx, YC, max(1.0, r * 0.22), "#ffffff"))
+        if j >= 1:
+            fade = max(0.0, 1.0 - j / 22.0)
+            for i in range(len(DEBRIS)):
+                ang, v = DEBRIS[i]
+                dx = int(cx + math.cos(ang) * v * j * 1.3)
+                dy = int(YC + math.sin(ang) * v * j * 0.9)
+                if dx >= 0 and dx < W and dy >= 0 and dy < H:
+                    kids.append(box(dx, dy, 1, 1, scale_hex("#ffa030" if i % 2 == 0 else "#8a8f98", fade)))
+    return render.Stack(children = kids)
+
+def battle_frames():
+    return [build_battle_frame(f) for f in range(BATTLE_FRAMES)]
+
 def make_pass(name, right):
     if name in VIEWS:
         return ("sprite", VIEWS[name], right)
@@ -534,11 +680,13 @@ def passes(view_name, direction):
     """List of passes to string together for the chosen view and direction."""
     out = []
     if view_name == "all":
-        seq = ["side", "top", "bottom", "diagonal", "approach", "recede"]
+        # top and bottom look nearly alike, so "all" shows the plan view once (top);
+        # "bottom" stays selectable on its own.
+        seq = ["side", "top", "diagonal", "battle", "approach", "recede"]
         for i in range(len(seq)):
             right = (i % 2 == 0) if direction == "both" else (direction == "right")
             out.append(make_pass(seq[i], right))
-    elif view_name in ("approach", "recede"):
+    elif view_name in ("approach", "recede", "battle"):
         out.append(make_pass(view_name, True))
     else:
         if direction != "left":
@@ -557,6 +705,8 @@ def main(config):
             frames += [build_frame(arg, f, right) for f in range(FRAMES)]
         elif kind == "diag":
             frames += [build_diag_frame(f, arg, ss) for f in range(FRAMES)]
+        elif kind == "battle":
+            frames += battle_frames()
         elif kind == "approach":
             frames += approach_frames(ss)
         else:
@@ -592,6 +742,7 @@ def get_schema():
                     schema.Option(display = "Diagonal", value = "diagonal"),
                     schema.Option(display = "Approaching", value = "approach"),
                     schema.Option(display = "Receding", value = "recede"),
+                    schema.Option(display = "Battle", value = "battle"),
                 ],
             ),
             schema.Dropdown(

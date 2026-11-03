@@ -4,7 +4,8 @@ A sweeping-by USS Enterprise (original series) for the [Tidbyt](https://tidbyt.c
 written in Starlark for [Pixlet](https://github.com/tidbyt/pixlet).
 
 The ship drifts across a starfield, then goes to warp. Views: side, top, bottom, diagonal,
-approaching, and receding. Side-view passes fly left-to-right or right-to-left over a drifting planet; the approach
+battle, approaching, and receding. "All views" plays side, top, diagonal, battle, approach and recede (bottom is
+nearly identical to top, so it's selectable on its own but left out of the loop). Side-view passes fly left-to-right or right-to-left over a drifting planet; the approach
 shows the registry (NCC-1701) fading in and out before the ship fills the screen; the recede just vanishes.
 
 ## Run it
@@ -17,7 +18,7 @@ Pass config on the command line, e.g. `pixlet render enterprise.star view=top di
 
 | key         | values                                                                 | default |
 |-------------|------------------------------------------------------------------------|---------|
-| `view`      | `all`, `side`, `top`, `bottom`, `diagonal`, `approach`, `recede`       | `all`   |
+| `view`      | `all`, `side`, `top`, `bottom`, `diagonal`, `battle`, `approach`, `recede` | `all`   |
 | `direction` | `both` (alternate), `right`, `left`                                    | `both`  |
 | `smooth`    | `true` (2x2 anti-aliased angled views, ~95 KB) or `false` (crisp, ~83 KB) | `true`  |
 

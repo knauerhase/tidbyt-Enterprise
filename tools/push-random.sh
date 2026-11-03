@@ -19,7 +19,7 @@ ENV_FILE="${TIDBYT_ENV:-$HOME/.config/tidbyt/env}"
 : "${TIDBYT_API_KEY:?set TIDBYT_API_KEY in $ENV_FILE}"
 
 here="$(cd "$(dirname "$0")/.." && pwd)"
-views=(side top bottom diagonal approach recede)
+views=(side top bottom diagonal battle approach recede)
 dirs=(right left)
 view="${views[RANDOM % ${#views[@]}]}"
 dir="${dirs[RANDOM % ${#dirs[@]}]}"
