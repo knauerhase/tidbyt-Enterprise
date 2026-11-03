@@ -18,6 +18,7 @@ Pass config on the command line, e.g. `pixlet render enterprise.star view=top di
 |-------------|------------------------------------------------------------------------|---------|
 | `view`      | `all`, `side`, `top`, `bottom`, `diagonal`, `approach`, `recede`       | `all`   |
 | `direction` | `both` (alternate), `right`, `left`                                    | `both`  |
+| `smooth`    | `true` (2x2 anti-aliased angled views, ~95 KB) or `false` (crisp, ~83 KB) | `true`  |
 
 The Tidbyt phone app only shows these dropdowns for a published or private app; a pushed image is fixed.
 

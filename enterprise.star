@@ -331,8 +331,9 @@ def hit(shapes, px, py):
                 return sh[5]
     return None
 
-def draw_model(shapes, cx, cy, ang, scale, frame, flipv):
-    """Boxes for the model centred at (cx, cy), heading ang degrees (0 = right)."""
+def draw_model(shapes, cx, cy, ang, scale, frame, flipv, ss):
+    """Boxes for the model centred at (cx, cy), heading ang degrees (0 = right).
+    ss = 1 samples each pixel once (crisp); ss = 2 averages 2x2 samples (smooth)."""
     a = ang * math.pi / 180.0
     ca = math.cos(a)
     sa = math.sin(a)
@@ -351,15 +352,43 @@ def draw_model(shapes, cx, cy, ang, scale, frame, flipv):
         for xx in range(x_lo, x_hi + 1):
             col = None
             if xx < x_hi:
-                dx = xx + 0.5 - cx
-                dy = yy + 0.5 - cy
-                px = (dx * ca + dy * sa) * inv
-                py = (dy * ca - dx * sa) * inv
-                if flipv:
-                    py = -py
-                col = hit(shapes, px, py)
-                if col == "b":
-                    col = bussard
+                if ss == 1:
+                    dx = xx + 0.5 - cx
+                    dy = yy + 0.5 - cy
+                    px = (dx * ca + dy * sa) * inv
+                    py = (dy * ca - dx * sa) * inv
+                    if flipv:
+                        py = -py
+                    col = hit(shapes, px, py)
+                    if col == "b":
+                        col = bussard
+                else:
+                    # 2x2 supersampling: average four samples (misses count as sky)
+                    tr = 0
+                    tg = 0
+                    tb = 0
+                    nhit = 0
+                    for sy in (0.25, 0.75):
+                        for sx in (0.25, 0.75):
+                            dx = xx + sx - cx
+                            dy = yy + sy - cy
+                            px = (dx * ca + dy * sa) * inv
+                            py = (dy * ca - dx * sa) * inv
+                            if flipv:
+                                py = -py
+                            c = hit(shapes, px, py)
+                            if c == "b":
+                                c = bussard
+                            if c == None:
+                                tg += 2
+                                tb += 14
+                            else:
+                                nhit += 1
+                                tr += int(c[1:3], 16)
+                                tg += int(c[3:5], 16)
+                                tb += int(c[5:7], 16)
+                    if nhit > 0:
+                        col = "#" + hex2(tr // 4) + hex2(tg // 4) + hex2(tb // 4)
             if col != run_col:
                 if run_col != None:
                     out.append(box(run_start, yy, xx - run_start, 1, run_col))
@@ -373,7 +402,7 @@ def lcg(seed):
 def star_boxes(stars):
     return [box(st[0], st[1], 1, 1, gray(st[2])) for st in stars if (0 <= st[0] and st[0] < W and 0 <= st[1] and st[1] < H)]
 
-def build_diag_frame(f, ang):
+def build_diag_frame(f, ang, ss):
     """Plan-view ship crossing the panel diagonally at heading ang."""
     s = f / (FRAMES - 1.0)
     prog = 0.55 * s + 0.45 * s * s * s * s
@@ -401,7 +430,7 @@ def build_diag_frame(f, ang):
                 kids.append(box(int(tx - fx * i), int(ty - fy * i), 1, 1, "#" + hex2(int(120 * fade)) + hex2(int(160 * fade)) + hex2(int(255 * fade))))
                 if int(tx - fx * i) < 0 or int(tx - fx * i) >= W:
                     break
-    kids.extend(draw_model(MODEL_TOP, cx, cy, ang, sc, f, False))
+    kids.extend(draw_model(MODEL_TOP, cx, cy, ang, sc, f, False, ss))
     return render.Stack(children = kids)
 
 APPROACH_FRAMES = 60
@@ -439,7 +468,7 @@ def burst_stars(nf):
         out.append(cur)
     return out
 
-def approach_frames():
+def approach_frames(ss):
     stars = burst_stars(APPROACH_FRAMES)
     frames = []
     for f in range(APPROACH_FRAMES):
@@ -447,7 +476,7 @@ def approach_frames():
         sc = 0.12 * math.pow(58.0, s)
         kids = [render.Box(width = W, height = H, color = BG)]
         kids.extend(star_boxes(stars[f]))
-        kids.extend(draw_model(MODEL_FACE, 32, 17, 0, sc, f, True))
+        kids.extend(draw_model(MODEL_FACE, 32, 17, 0, sc, f, True, ss))
         frames.append(render.Stack(children = kids))
     for i in range(6):  # it whooshes past: white-out that fades
         k = 1.0 - i / 6.0
@@ -455,14 +484,14 @@ def approach_frames():
         frames.append(render.Box(width = W, height = H, color = c))
     return frames
 
-def recede_frames():
+def recede_frames(ss):
     frames = []
     for f in range(RECEDE_FRAMES):
         s = f / (RECEDE_FRAMES - 1.0)
         sc = 7.0 * math.pow(0.03, s)
         kids = [render.Box(width = W, height = H, color = BG)]
         kids.extend(star_boxes(STARS))
-        kids.extend(draw_model(MODEL_REAR, 32, 17 - 4 * s, 0, sc, f, True))
+        kids.extend(draw_model(MODEL_REAR, 32, 17 - 4 * s, 0, sc, f, True, ss))
         frames.append(render.Stack(children = kids))
     # warp flash where it disappears
     for i in range(8):
@@ -506,16 +535,17 @@ def passes(view_name, direction):
 def main(config):
     direction = config.str("direction", "both")
     view_name = config.str("view", "all")
+    ss = 2 if config.bool("smooth", True) else 1
     frames = []
     for kind, arg, right in passes(view_name, direction):
         if kind == "sprite":
             frames += [build_frame(arg, f, right) for f in range(FRAMES)]
         elif kind == "diag":
-            frames += [build_diag_frame(f, arg) for f in range(FRAMES)]
+            frames += [build_diag_frame(f, arg, ss) for f in range(FRAMES)]
         elif kind == "approach":
-            frames += approach_frames()
+            frames += approach_frames(ss)
         else:
-            frames += recede_frames()
+            frames += recede_frames(ss)
     return render.Root(
         delay = DELAY,
         show_full_animation = True,
@@ -526,6 +556,13 @@ def get_schema():
     return schema.Schema(
         version = "1",
         fields = [
+            schema.Toggle(
+                id = "smooth",
+                name = "Smooth edges",
+                desc = "Anti-alias the angled and head-on views (larger file).",
+                icon = "wandMagicSparkles",
+                default = True,
+            ),
             schema.Dropdown(
                 id = "view",
                 name = "View",
