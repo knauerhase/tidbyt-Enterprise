@@ -29,7 +29,7 @@ COLORS = {
     "p": "#6e737d",  # pylon
 }
 
-def build_sprite():
+def build_side():
     """Paint the side-view ship (facing right) into a grid of characters."""
     sw = 40
     sh = 12
@@ -67,9 +67,58 @@ def build_sprite():
     put(9, 23, "E")
     return ["".join(r) for r in g]
 
-SPRITE = build_sprite()
-SPRITE_W = len(SPRITE[0])
-SPRITE_H = len(SPRITE)
+def build_plan(bottom):
+    """Plan view (looking down on the ship, or up at its belly), facing right."""
+    sw = 40
+    sh = 19
+    g = [["." for _ in range(sw)] for _ in range(sh)]
+
+    def put(row, col, text):
+        for i in range(len(text)):
+            g[row][col + i] = text[i]
+
+    # nacelles at the sides, with pylons joining them to the hull
+    for top_row, shade_row in ((1, 2), (16, 17)):
+        put(top_row, 3, "nnnnnnnnnnnnnn")
+        put(top_row, 17, "b")
+        put(shade_row, 3, "NNNNNNNNNNNNNN")
+        put(shade_row, 17, "b")
+    for r in range(3, 8):
+        put(r, 12, "pp")
+    for r in range(11, 16):
+        put(r, 12, "pp")
+    # secondary hull (mostly hidden behind the saucer)
+    put(8, 9, "eeeeeeeeeeeeeeeeee")
+    put(9, 9, "eeeeeeeeeeeeeeeeee")
+    put(10, 9, "EEEEEEEEEEEEEEEEEE")
+    # saucer: a disc centred at (31, 9)
+    for r in range(sh):
+        for c in range(sw):
+            d2 = (c - 31) * (c - 31) + (r - 9) * (r - 9)
+            if d2 > 54:
+                continue
+            ch = "S"
+            if d2 > 31:
+                ch = "s"
+            if bottom:
+                if d2 <= 6:
+                    ch = "k"  # neck where it joins the hull
+                elif d2 >= 17 and d2 <= 24:
+                    ch = "E"  # underside ring
+            elif d2 <= 4:
+                ch = "d"  # bridge dome
+            g[r][c] = ch
+    return ["".join(r) for r in g]
+
+def make_view(rows, streaks):
+    return {"rows": rows, "w": len(rows[0]), "h": len(rows), "streaks": streaks}
+
+# streaks: (row inside the sprite, distance of the tail from the sprite's rear edge)
+VIEWS = {
+    "side": make_view(build_side(), [(0, 2), (1, 2), (8, 9)]),
+    "top": make_view(build_plan(False), [(1, 3), (2, 3), (16, 3), (17, 3), (9, 9)]),
+    "bottom": make_view(build_plan(True), [(1, 3), (2, 3), (16, 3), (17, 3), (9, 9)]),
+}
 
 def runs(row):
     """Run-length encode a row string into [(char, start, length)]."""
@@ -94,13 +143,13 @@ def box(x, y, w, h, color):
         child = render.Box(width = w, height = h, color = color),
     )
 
-def ship_widgets(x0, y0, right, frame):
+def ship_widgets(view, x0, y0, right, frame):
     """Boxes for the ship with its left edge at x0 (may be partly off-screen)."""
     out = []
     pulse = 90 + int(80 * (1 + sin(frame * 0.7)) / 2)
     bussard = "#ff" + hex2(pulse) + "00"
-    for ry in range(SPRITE_H):
-        row = SPRITE[ry]
+    for ry in range(view["h"]):
+        row = view["rows"][ry]
         if not right:
             row = row[::-1]
         for ch, start, n in runs(row):
@@ -166,13 +215,15 @@ def streak_widgets(x_tail, y, length, right):
             out.append(box(lo, y, hi - lo, 1, shades[i]))
     return out
 
-def build_frame(f, right, y0):
+def build_frame(view, f, right):
+    sw = view["w"]
+    y0 = (H - view["h"]) // 2
     s = f / (FRAMES - 1.0)
     prog = 0.55 * s + 0.45 * s * s * s * s  # gentle cruise, then warp
     speed = 0.4 + 2.2 * s * s * s
-    span = W + SPRITE_W + 6
+    span = W + sw + 6
     if right:
-        x0 = int(-SPRITE_W + prog * span)
+        x0 = int(-sw + prog * span)
     else:
         x0 = int(W - prog * span)
 
@@ -184,32 +235,36 @@ def build_frame(f, right, y0):
         sx = (st[0] - drift) % W
         kids.append(box(sx, st[1], 1, 1, gray(st[2])))
 
-    # warp streaks behind nacelle and hull once it gets going
+    # warp streaks behind the nacelles and hull once it gets going
     if speed > 1.0:
         length = int(speed * 7)
-        if right:
-            nac_tail = x0 + 2
-            hull_tail = x0 + 9
-        else:
-            nac_tail = x0 + SPRITE_W - 2
-            hull_tail = x0 + SPRITE_W - 9
-        kids.extend(streak_widgets(nac_tail, y0, length, right))
-        kids.extend(streak_widgets(nac_tail, y0 + 1, length, right))
-        kids.extend(streak_widgets(hull_tail, y0 + 8, length, right))
+        for row, off in view["streaks"]:
+            tail = x0 + off if right else x0 + sw - off
+            kids.extend(streak_widgets(tail, y0 + row, length, right))
 
-    kids.extend(ship_widgets(x0, y0, right, f))
+    kids.extend(ship_widgets(view, x0, y0, right, f))
     return render.Stack(children = kids)
+
+def passes(view_name, direction):
+    """List of (view, right?) passes for the chosen view and direction."""
+    names = ["side", "top", "bottom"] if view_name == "all" else [view_name]
+    out = []
+    for n in names:
+        if direction != "left":
+            out.append((VIEWS[n], True))
+        if direction != "right":
+            out.append((VIEWS[n], False))
+    return out
 
 def main(config):
     direction = config.str("direction", "both")
-    y0 = (H - SPRITE_H) // 2
+    view_name = config.str("view", "all")
     frames = []
-    if direction != "left":
-        frames += [build_frame(f, True, y0) for f in range(FRAMES)]
-    if direction != "right":
-        frames += [build_frame(f, False, y0) for f in range(FRAMES)]
+    for view, right in passes(view_name, direction):
+        frames += [build_frame(view, f, right) for f in range(FRAMES)]
     return render.Root(
         delay = DELAY,
+        show_full_animation = True,
         child = render.Animation(children = frames),
     )
 
@@ -217,6 +272,19 @@ def get_schema():
     return schema.Schema(
         version = "1",
         fields = [
+            schema.Dropdown(
+                id = "view",
+                name = "View",
+                desc = "Which angle to see the Enterprise from.",
+                icon = "eye",
+                default = "all",
+                options = [
+                    schema.Option(display = "All views", value = "all"),
+                    schema.Option(display = "Side", value = "side"),
+                    schema.Option(display = "Top", value = "top"),
+                    schema.Option(display = "Bottom", value = "bottom"),
+                ],
+            ),
             schema.Dropdown(
                 id = "direction",
                 name = "Direction",
