@@ -5,9 +5,9 @@ Description: The original-series starship drifts across a starfield, then goes t
 Author: Robin Knauerhase
 """
 
-load("render.star", "render")
 load("math.star", "math")
 load("random.star", "random")
+load("render.star", "render")
 load("schema.star", "schema")
 
 W = 64
@@ -49,16 +49,19 @@ def build_side():
 
     # far nacelle peeks out above the near one
     put(0, 4, "FFFFFFFFFFFF")
+
     # near nacelle (bussard 'b' at the front, pulsed per frame)
     put(1, 2, "nnnnnnnnnnnnnn")
     put(1, 16, "b")
     put(2, 2, "NNNNNNNNNNNNNN")
     put(2, 16, "b")
+
     # pylon, slanting down toward the hull
     put(3, 8, "pp")
     put(4, 9, "pp")
     put(5, 10, "pp")
     put(6, 11, "pp")
+
     # saucer: widest deck is row 4; the decks above and below pull in more steeply
     put(1, 27, "dddd")
     put(2, 25, "sSSSSSSs")
@@ -66,6 +69,7 @@ def build_side():
     put(4, 19, "SSSSSSSSSSSSSSSSSSSS")
     put(5, 24, "ssssssssss")
     put(6, 27, "ssss")
+
     # neck + secondary hull
     put(6, 23, "kk")
     put(7, 9, "eeeeeeeeeeeeee")
@@ -95,12 +99,14 @@ def build_plan(bottom):
     for i in range(4):
         put(3 + i, 13 - i, "pp")
         put(15 - i, 13 - i, "pp")
+
     # secondary hull (mostly hidden behind the saucer)
     put(7, 8, "eeeeeeeeeeeeeeeee")
     put(8, 6, "eeeeeeeeeeeeeeeeeeee")
     put(9, 6, "eeeeeeeeeeeeeeeeeeee")
     put(10, 6, "EEEEEEEEEEEEEEEEEEEE")
     put(11, 8, "EEEEEEEEEEEEEEEEE")
+
     # saucer: a disc centred at (31, 9)
     for r in range(sh):
         for c in range(sw):
@@ -269,7 +275,6 @@ def build_frame(view, f, right):
 
     kids.extend(ship_widgets(view, x0, y0, right, f))
     return render.Stack(children = kids)
-
 
 # ---------------------------------------------------------------------------
 # Shape models for the angled and head-on views.  The ship is a few circles,
@@ -534,7 +539,6 @@ def recede_frames(ss):
         kids.extend(star_boxes(STARS))
         frames.append(render.Stack(children = kids))
     return frames
-
 
 # ---------------------------------------------------------------------------
 # Battle: the Enterprise (plan view) drops out of warp mid-screen, a Klingon
